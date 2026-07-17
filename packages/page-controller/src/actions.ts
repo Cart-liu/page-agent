@@ -61,11 +61,7 @@ function blurLastClickedElement() {
  *
  * @private Internal method, subject to change at any time.
  */
-export async function clickElement(element: HTMLElement) {
-	blurLastClickedElement()
-
-	lastClickedElement = element
-
+async function clickElementOnce(element: HTMLElement) {
 	await scrollIntoViewIfNeeded(element)
 	const frame = element.ownerDocument.defaultView?.frameElement
 	if (frame) await scrollIntoViewIfNeeded(frame)
@@ -121,6 +117,49 @@ export async function clickElement(element: HTMLElement) {
 	// Click — activation behavior (navigation, form submit, etc.) triggers
 	// via bubbling from target up to the interactive ancestor.
 	target.click()
+
+	await waitFor(0.2)
+}
+
+export async function clickElement(element: HTMLElement) {
+	blurLastClickedElement()
+	lastClickedElement = element
+	await clickElementOnce(element)
+}
+
+/**
+ * Simulate a double click following the same interaction sequence as a normal click,
+ * repeated twice and finished with a `dblclick` event.
+ *
+ * @private Internal method, subject to change at any time.
+ */
+export async function doubleClickElement(element: HTMLElement) {
+	blurLastClickedElement()
+	lastClickedElement = element
+	await clickElementOnce(element)
+	await waitFor(0.05)
+	await clickElementOnce(element)
+
+	const rect = element.getBoundingClientRect()
+	const x = rect.left + rect.width / 2
+	const y = rect.top + rect.height / 2
+	const doc = element.ownerDocument
+	await enablePassThrough()
+	const hitTarget = doc.elementFromPoint(x, y)
+	await disablePassThrough()
+	const target =
+		hitTarget instanceof HTMLElement && element.contains(hitTarget) ? hitTarget : element
+
+	target.dispatchEvent(
+		new MouseEvent('dblclick', {
+			bubbles: true,
+			cancelable: true,
+			clientX: x,
+			clientY: y,
+			button: 0,
+			detail: 2,
+		})
+	)
 
 	await waitFor(0.2)
 }

@@ -105,6 +105,20 @@ tools.set(
 )
 
 tools.set(
+	'double_click_element_by_index',
+	tool({
+		description: 'Double click element by index',
+		inputSchema: z.object({
+			index: z.int().min(0),
+		}),
+		execute: async function (this: PageAgentCore, input) {
+			const result = await this.pageController.doubleClick(input.index)
+			return result.message
+		},
+	})
+)
+
+tools.set(
 	'input_text',
 	tool({
 		description: 'Click and type text into an interactive input element',

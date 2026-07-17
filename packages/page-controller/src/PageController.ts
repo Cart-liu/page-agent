@@ -8,6 +8,7 @@
  */
 import {
 	clickElement,
+	doubleClickElement,
 	getElementByIndex,
 	inputTextElement,
 	scrollHorizontally,
@@ -264,6 +265,28 @@ export class PageController extends EventTarget {
 			return {
 				success: false,
 				message: `❌ Failed to click element: ${error}`,
+			}
+		}
+	}
+
+	/**
+	 * Double click element by index
+	 */
+	async doubleClick(index: number): Promise<ActionResult> {
+		try {
+			this.assertIndexed()
+			const element = getElementByIndex(this.selectorMap, index)
+			const elemText = this.elementTextMap.get(index)
+			await doubleClickElement(element)
+
+			return {
+				success: true,
+				message: `✅ Double clicked element (${elemText ?? index}).`,
+			}
+		} catch (error) {
+			return {
+				success: false,
+				message: `❌ Failed to double click element: ${error}`,
 			}
 		}
 	}

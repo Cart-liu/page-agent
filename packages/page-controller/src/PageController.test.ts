@@ -9,6 +9,14 @@ describe('PageController', () => {
 		expect(await controller.getCurrentUrl()).toBe(window.location.href)
 	})
 
+	it('reports a failure when double clicking before the DOM is indexed', async () => {
+		const controller = new PageController()
+		const result = await controller.doubleClick(0)
+
+		expect(result.success).toBe(false)
+		expect(result.message).toContain('DOM tree not indexed yet')
+	})
+
 	describe('executeJavascript', () => {
 		it('runs a script and returns its result', async () => {
 			const controller = new PageController()
