@@ -43,6 +43,69 @@ export function getElementByIndex(
 
 let lastClickedElement: HTMLElement | null = null
 
+const CSS_HOVER_ATTR = 'data-page-agent-hover'
+let cssHoverMarked: HTMLElement[] = []
+let cssHoverStyleEl: HTMLStyleElement | null = null
+
+/**
+ * Synthetic mouse events do NOT activate CSS :hover.
+ * Rewrite :hover rules to an attribute selector and keep it until the next leave.
+ */
+function clearForcedCssHover() {
+	for (const el of cssHoverMarked) {
+		el.removeAttribute(CSS_HOVER_ATTR)
+	}
+	cssHoverMarked = []
+	cssHoverStyleEl?.remove()
+	cssHoverStyleEl = null
+}
+
+function forceCssHover(element: HTMLElement) {
+	clearForcedCssHover()
+
+	let current: HTMLElement | null = element
+	while (current && current !== document.documentElement) {
+		current.setAttribute(CSS_HOVER_ATTR, 'true')
+		cssHoverMarked.push(current)
+		current = current.parentElement
+	}
+
+	const cssTexts: string[] = []
+	const walkRules = (rules: CSSRuleList) => {
+		for (const rule of Array.from(rules)) {
+			if (rule instanceof CSSStyleRule) {
+				const selector = rule.selectorText
+				if (selector?.includes(':hover')) {
+					const rewritten = selector.replace(/:hover/g, `[${CSS_HOVER_ATTR}="true"]`)
+					cssTexts.push(`${rewritten} { ${rule.style.cssText} }`)
+				}
+			} else if (rule instanceof CSSGroupingRule) {
+				try {
+					walkRules(rule.cssRules)
+				} catch {
+					// Ignore unreadable nested rules
+				}
+			}
+		}
+	}
+
+	const doc = element.ownerDocument
+	for (const sheet of Array.from(doc.styleSheets)) {
+		try {
+			walkRules(sheet.cssRules)
+		} catch {
+			// Cross-origin stylesheets throw; skip them
+		}
+	}
+
+	if (cssTexts.length === 0) return
+
+	cssHoverStyleEl = doc.createElement('style')
+	cssHoverStyleEl.setAttribute('data-page-agent-hover-style', 'true')
+	cssHoverStyleEl.textContent = cssTexts.join('\n')
+	doc.head.appendChild(cssHoverStyleEl)
+}
+
 function blurLastClickedElement() {
 	if (lastClickedElement) {
 		lastClickedElement.dispatchEvent(new PointerEvent('pointerout', { bubbles: true }))
@@ -52,6 +115,7 @@ function blurLastClickedElement() {
 		lastClickedElement.blur()
 		lastClickedElement = null
 	}
+	clearForcedCssHover()
 }
 
 /**
@@ -125,6 +189,59 @@ export async function clickElement(element: HTMLElement) {
 	blurLastClickedElement()
 	lastClickedElement = element
 	await clickElementOnce(element)
+}
+
+/**
+ * Simulate hovering an element following W3C Pointer Events + UI Events hover order:
+ * pointerover/enter → mouseover/enter
+ *
+ * Useful for menus, tooltips, and other UI that only appears on hover.
+ *
+ * @private Internal method, subject to change at any time.
+ */
+export async function hoverElement(element: HTMLElement) {
+	blurLastClickedElement()
+	lastClickedElement = element
+
+	await scrollIntoViewIfNeeded(element)
+	const frame = element.ownerDocument.defaultView?.frameElement
+	if (frame) await scrollIntoViewIfNeeded(frame)
+
+	const rect = element.getBoundingClientRect()
+	const x = rect.left + rect.width / 2
+	const y = rect.top + rect.height / 2
+
+	await movePointerToElement(element, x, y)
+	await waitFor(0.1)
+
+	// Hit-test to find the deepest element at hover coordinates, matching
+	// real browser behavior where events target the innermost element.
+	const doc = element.ownerDocument
+	await enablePassThrough()
+	const hitTarget = doc.elementFromPoint(x, y)
+	await disablePassThrough()
+	const target =
+		hitTarget instanceof HTMLElement && element.contains(hitTarget) ? hitTarget : element
+
+	const pointerOpts = {
+		bubbles: true,
+		cancelable: true,
+		clientX: x,
+		clientY: y,
+		pointerType: 'mouse',
+	}
+	const mouseOpts = { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }
+
+	target.dispatchEvent(new PointerEvent('pointerover', pointerOpts))
+	target.dispatchEvent(new PointerEvent('pointerenter', { ...pointerOpts, bubbles: false }))
+	target.dispatchEvent(new MouseEvent('mouseover', mouseOpts))
+	target.dispatchEvent(new MouseEvent('mouseenter', { ...mouseOpts, bubbles: false }))
+
+	// Keep CSS :hover styles active until the next leave/click/hover.
+	forceCssHover(element)
+
+	// Give CSS/JS hover menus a moment to appear before the next agent step.
+	await waitFor(0.3)
 }
 
 /**

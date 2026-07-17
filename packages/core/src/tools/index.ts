@@ -119,6 +119,21 @@ tools.set(
 )
 
 tools.set(
+	'hover_element_by_index',
+	tool({
+		description:
+			'Hover (mouse over) an element by index WITHOUT clicking. REQUIRED for menus/dropdowns/tooltips that open on hover. Do NOT use click_element_by_index for hover-only UI.',
+		inputSchema: z.object({
+			index: z.int().min(0),
+		}),
+		execute: async function (this: PageAgentCore, input) {
+			const result = await this.pageController.hoverElement(input.index)
+			return result.message
+		},
+	})
+)
+
+tools.set(
 	'input_text',
 	tool({
 		description: 'Click and type text into an interactive input element',
